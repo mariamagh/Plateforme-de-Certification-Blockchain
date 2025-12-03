@@ -503,12 +503,18 @@
                     // 2. Affichage du Timer
                     // On injecte le HTML
                     // --- 2. BOUTON ORANGE (Version Modal) ---
+                    // --- 2. RESTAURATION DU BOUTON METAMASK + BOUTON VERIF ---
                     status.innerHTML = `
                         <div style="margin-top: 15px;">
                             <div style="color: var(--success); margin-bottom: 10px; font-weight: bold;">
                                 ✅ NFT créé (ID: ${result.tokenId}) !
                             </div>
-                            <button onclick="openVerifyModal()" class="btn-primary hover-shine" style="background: #f59e0b; color: black;">
+                            
+                            <button id="btnTimerMetaMask" class="btn-primary" style="background: #475569; cursor: not-allowed; opacity: 0.8; margin-bottom: 10px;" disabled>
+                                <i class="ri-loader-4-line ri-spin"></i> Attente réseau (10s)...
+                            </button>
+
+                            <button onclick="openVerifyModal()" class="btn-choice btn-yes hover-shine" style="width: 100%; justify-content: center; border: 1px solid var(--warning); color: var(--warning);">
                                 <i class="ri-file-list-3-line"></i> Vérifier les transactions
                             </button>
                         </div>
