@@ -13,11 +13,12 @@ RUN npm install
 # 5. On copie TOUS tes dossiers (client, server, artifacts) dans la boîte
 COPY . .
 
-# 6. On ouvre le port 3000 (celui de ton serveur)
-EXPOSE 3000
-
+# 6. On compile les contrats intelligents
 RUN npx hardhat compile
 
-# 7. La commande pour démarrer quand on ouvre la boîte
+# 7. On ouvre le port 3000 (celui de ton serveur)
+EXPOSE 3000
+
+# 8. La commande pour démarrer quand on ouvre la boîte
 CMD ["node", "server/server.js"]
 

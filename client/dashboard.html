@@ -249,7 +249,7 @@
                     <input type="text" id="firstName" placeholder="Prénom" class="hover-shine" />
                     <input type="text" id="lastName" placeholder="Nom" class="hover-shine" />
                 </div>
-                <input type="text" id="newWallet" placeholder="Adresse Wallet Étudiant (Obligatoire)" class="hover-shine" required />
+                <input type="text" id="newWallet" placeholder="Adresse Wallet Étudiant" class="hover-shine" required />
 
                 <input type="text" id="newCourse" placeholder="Cours (ex: Blockchain)" class="hover-shine" />
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -369,7 +369,7 @@
             // Ne jamais retourner sauf si clic explicite
             if (!explicit) return;
             // Bloquer le retour pendant une inscription en cours
-            if (typeof isAddingStudent !== 'undefined' && isAddingStudent) {
+            if ((typeof isAddingStudent !== 'undefined' && isAddingStudent) || isBusy) {
                 showCustomError('Opération en cours', 'Une inscription est en cours. Veuillez patienter avant de quitter.');
                 return;
             }
@@ -394,6 +394,7 @@
 
         // Empêcher les retours automatiques: drapeau d'inscription en cours
         let isAddingStudent = false;
+        let isBusy = false;
 
         // --- LOGIN ADMIN ---
         function verifyAdmin() {
@@ -517,7 +518,7 @@
         // Fonction pour déconnecter l'étudiant
         function disconnectStudent() {
             // Si une inscription est en cours, bloquer
-            if (typeof isAddingStudent !== 'undefined' && isAddingStudent) {
+            if ((typeof isAddingStudent !== 'undefined' && isAddingStudent) || isBusy) {
                 showCustomError('Opération en cours', 'Une inscription est en cours. Veuillez patienter avant de vous déconnecter.');
                 return;
             }
@@ -745,7 +746,7 @@
 
         // Protection contre l'actualisation pendant les opérations
         window.addEventListener('beforeunload', function(e) {
-            if (isAddingStudent) {
+            if (isAddingStudent || isBusy) {
                 e.preventDefault();
                 return undefined;
             }
@@ -753,7 +754,7 @@
 
         // Bloquer F5 et Ctrl+R pendant les opérations
         document.addEventListener('keydown', function(e) {
-            if (isAddingStudent) {
+            if (isAddingStudent || isBusy) {
                 // F5
                 if (e.key === 'F5' || e.keyCode === 116) {
                     e.preventDefault();
@@ -795,7 +796,7 @@
             const status = document.getElementById('addStatus');
             const mintBtn = document.getElementById('mintBtn');
 
-            if(!id || !lastName || !firstName || !course || !grade || !file || !walletInput) { 
+            if(!id || !lastName || !firstName || !course || !grade || !walletInput) { 
                 showNotification('warning', 'Champs manquants', 'Veuillez remplir tous les champs obligatoires, y compris l\'adresse wallet de l\'étudiant.');
                 isAddingStudent = false;
                 return false;
@@ -816,27 +817,36 @@
             status.innerHTML = "<div style='color:#3b82f6'><i class='ri-loader-4-line ri-spin'></i> Inscription sur la Blockchain...</div>";
             if(addBtn) addBtn.disabled = true;
             if(mintBtn) mintBtn.style.display = 'none';
+            isBusy = true;
 
             // Afficher le minuteur (estimation: 15-20 secondes pour l'inscription)
             showTimer('addStatus', 20, 'Inscription en cours...');
 
             try {
-                const formData = new FormData();
-                formData.append('id', id); formData.append('name', name); 
-                formData.append('course', course); formData.append('birthDate', birthDate);
-                formData.append('grade', grade); formData.append('studentWallet', walletInput);
-                formData.append('diploma', file);
-
-                const res = await fetch(`${API_URL}/add-student`, { method: 'POST', body: formData });
-                const result = await res.json();
+                let result;
+                if (file) {
+                    const formData = new FormData();
+                    formData.append('id', id); formData.append('name', name); 
+                    formData.append('course', course); formData.append('birthDate', birthDate);
+                    formData.append('grade', grade); formData.append('studentWallet', walletInput);
+                    formData.append('diploma', file);
+                    const res = await fetch(`${API_URL}/add-student`, { method: 'POST', body: formData });
+                    result = await res.json();
+                } else {
+                    const res = await fetch(`${API_URL}/add-student-ai`, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id, name, course, birthDate, grade, studentWallet: walletInput })
+                    });
+                    result = await res.json();
+                }
                 
                 if(result.success) {
                     clearTimer();
                     
-                    // Sauvegarder les données pour le minting
                     lastRegisteredStudent = {
                         studentId: result.studentId,
-                        ipfsLink: result.ipfsLink,
+                        ipfsLink: result.metadataURI,
                         name: name,
                         studentWallet: walletInput
                     };
@@ -848,12 +858,14 @@
                     document.body.style.justifyContent = 'flex-start';
 
                     status.innerHTML = `<div style="color:var(--success); font-weight:bold; margin-bottom:10px;">✅ Étudiant inscrit avec succès !</div>`;
+                    status.innerHTML += `<div style="font-size:12px; color:#94a3b8; margin-top:5px;">Vous pouvez maintenant minter le NFT.</div>`;
 
-                    // Afficher le bouton Minter NFT
-                    if(mintBtn) {
-                        mintBtn.style.display = "block";
-                        // Le onclick est déjà défini dans le HTML
+                    if(mintBtn) { 
+                        mintBtn.style.display = "block"; 
+                        mintBtn.innerHTML = `<i class="ri-fox-line"></i> Minter NFT`;
                     }
+
+                    // Mint manuel: pas d'ajout automatique à MetaMask ici
 
                     // Reset des champs
                     document.getElementById('newId').value = ""; 
@@ -886,6 +898,7 @@
                 if(mintBtn) mintBtn.disabled = false;
                 // Fin de l'inscription, autoriser de nouveau la navigation
                 isAddingStudent = false;
+                isBusy = false;
             }
             return false;
         }
@@ -924,6 +937,7 @@
                 mintBtn.innerHTML = "<i class='ri-loader-4-line ri-spin'></i> Connexion MetaMask...";
                 mintBtn.disabled = true;
                 status.innerHTML = "<div style='color:#3b82f6'><i class='ri-loader-4-line ri-spin'></i> Connexion à MetaMask...</div>";
+                isBusy = true;
 
                 const adminAccount = await checkAndConnectMetaMask();
                 if (!adminAccount) {
@@ -1012,6 +1026,7 @@
             } 
             finally { 
                 mintBtn.disabled = false;
+                isBusy = false;
             }
             
             // Retourner false pour empêcher toute action par défaut
@@ -1064,6 +1079,88 @@
                     showNotification('error', 'Erreur', 'Impossible de se connecter à MetaMask.');
                 }
                 return null;
+            }
+        }
+
+        async function generateAIDiploma() {
+            const id = document.getElementById('newId').value;
+            const lastName = document.getElementById('lastName').value;
+            const firstName = document.getElementById('firstName').value;
+            const name = `${firstName} ${lastName}`;
+            const course = document.getElementById('newCourse').value;
+            const birthDate = document.getElementById('newBirth').value;
+            const grade = document.getElementById('newGrade').value;
+            const walletInput = document.getElementById('newWallet').value.trim();
+            const status = document.getElementById('addStatus');
+            const mintBtn = document.getElementById('mintBtn');
+            if(!id || !lastName || !firstName || !course || !grade || !walletInput) { 
+                showNotification('warning', 'Champs manquants', 'Remplissez les champs.');
+                return;
+            }
+            if (!walletInput.startsWith('0x') || walletInput.length !== 42) {
+                showNotification('error', 'Adresse invalide', 'Adresse wallet invalide.');
+                return;
+            }
+            showTimer('addStatus', 15, 'Génération IA...');
+            isBusy = true;
+            try {
+                const res = await fetch(`${API_URL}/add-student-ai`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, name, course, birthDate, grade, studentWallet: walletInput })
+                });
+                const result = await res.json();
+                clearTimer();
+                if (result.success) {
+                    lastRegisteredStudent = {
+                        studentId: result.studentId,
+                        ipfsLink: result.metadataURI,
+                        name: name,
+                        studentWallet: walletInput
+                    };
+                    document.getElementById('adminDashboard').style.display = 'block';
+                    document.body.style.justifyContent = 'flex-start';
+                    if(mintBtn) { 
+                        mintBtn.style.display = "block"; 
+                        mintBtn.innerHTML = `<i class="ri-fox-line"></i> Minter NFT`;
+                    }
+                    showNotification('success', 'Diplôme généré', 'Le diplôme IA est prêt; mintez maintenant le NFT.');
+                } else {
+                    showCustomError('Erreur', result.error || 'Impossible de générer le diplôme.');
+                }
+            } catch (e) {
+                clearTimer();
+                showCustomError('Erreur Serveur', 'Impossible de générer le diplôme.');
+            } 
+            finally {
+                isBusy = false;
+            }
+        }
+
+        async function addAdminNFTToMetaMask() {
+            if (!lastRegisteredStudent || !lastRegisteredStudent.adminTokenId) {
+                showNotification('warning', 'Aucun NFT', 'Aucun NFT disponible à ajouter.');
+                return;
+            }
+            const tokenId = lastRegisteredStudent.adminTokenId;
+            try {
+                const account = await checkAndConnectMetaMask();
+                if (!account) return;
+                await window.ethereum.request({
+                    method: 'wallet_watchAsset',
+                    params: { 
+                        type: 'ERC721', 
+                        options: { 
+                            address: APP_CONTRACT_ADDRESS, 
+                            tokenId: tokenId.toString(), 
+                            symbol: "SDIP", 
+                            decimals: 0 
+                        } 
+                    },
+                });
+                showNotification('success', 'NFT ajouté', 'Le diplôme a été ajouté à votre wallet MetaMask.');
+            } catch (error) {
+                showNotification('error', 'Erreur', 'Impossible d\'ajouter le NFT à MetaMask.');
             }
         }
 
